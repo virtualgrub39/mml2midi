@@ -18,5 +18,8 @@ reader.o: source/mml-reader.c source/mml2midi.h
 parser.o: source/mml-parser.c source/mml2midi.h
 	$(CC) -c -o $@ $(CFLAGS) $<
 
-mml2midi: lexer.o reader.o parser.o source/mml2midi.c
+writer-midi.o: source/mml-writer-midi.c source/mml2midi.h
+	$(CC) -c -o $@ $(CFLAGS) $<
+
+mml2midi: lexer.o reader.o parser.o writer-midi.o source/mml2midi.c
 	$(CC) -o $@ $(CFLAGS) $^

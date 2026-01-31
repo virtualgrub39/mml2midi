@@ -41,6 +41,8 @@ main (int argc, char *argv[])
         }
     }
 
+    mml_write_midi (&sequence, argv[2]);
+
     free (tokens);
     free (source);
 
