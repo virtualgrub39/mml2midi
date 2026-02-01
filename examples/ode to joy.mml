@@ -1,0 +1,19 @@
+% SPDX-License-Identifier: GPL-3.0-or-later
+% Copyright (C) 2026 virtualgrub39
+% Ode to joy - like melody :3
+
+!motif { e e f g g f e d c c d e }
+
+t120 v72 l4 o5
+[
+  @motif d. c8 c2 : d d e c d e8 f8 e c d e8 f8 e d c d o4 g2 o5
+] 3;
+
+l1 v48 o4
+!cmaj { (c e g) }
+!gmaj { (g b d) }
+[
+  @cmaj @cmaj (f a c) @gmaj @cmaj (c f a) l2 @cmaj @gmaj l1 @cmaj 
+  : 
+  @gmaj @cmaj @gmaj (e g+ b) (c e a) (d f+ a) l2 (c e g) (g b d) l1 
+] 2

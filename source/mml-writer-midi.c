@@ -72,6 +72,8 @@ typedef struct
     int octave;
     uint8_t velocity;
     uint8_t channel;
+
+    bool active_notes[128];
 } mml_context;
 
 void
@@ -171,58 +173,108 @@ process_control (mml_context *ctx, char32_t cmd, unsigned arg)
     }
 }
 
+typedef struct
+{
+    uint8_t midi_note;
+    bool is_tied;
+} chord_note_t;
+
 uint32_t
 process_track (mml_context *ctx)
 {
     uint32_t last_tick = 0;
 
+    memset (ctx->active_notes, 0, sizeof (ctx->active_notes));
+
     for (;;)
     {
-        mml_event ev = ctx->events->items[ctx->offset++];
+        if (ctx->offset >= ctx->events->size) break;
+
+        mml_event ev = ctx->events->items[ctx->offset];
+
+        if (ev.kind != MML_EV_NOTE)
+        {
+            ctx->offset++;
+            switch (ev.kind)
+            {
+            case MML_EV_EOT: return last_tick;
+            case MML_EV_CTL: process_control (ctx, ev.as.ctl.cmd, ev.as.ctl.value); break;
+            default: break;
+            }
+            continue;
+        }
+
+        chord_note_t batch[128];
+        int batch_count = 0;
+        uint32_t step_duration = 0;
+        bool step_complete = false;
+
+        while (!step_complete && ctx->offset < ctx->events->size)
+        {
+            mml_event *nev = &ctx->events->items[ctx->offset];
+            if (nev->kind != MML_EV_NOTE) break;
+
+            int note = pitch_to_midi_note (nev->as.note.pitch, ctx->octave, nev->as.note.acc);
+
+            if (note >= 0)
+            {
+                batch[batch_count].midi_note = (uint8_t)note;
+                batch[batch_count].is_tied = nev->as.note.tie;
+                batch_count++;
+            }
+
+            if (!nev->as.note.chord_link)
+            {
+                if (nev->as.note.length == 0) nev->as.note.length = ctx->default_length;
+                step_duration = calculate_duration (nev->as.note.length, nev->as.note.dots, ctx->ticks_per_quarter);
+                step_complete = true;
+            }
+            ctx->offset++;
+        }
 
         uint32_t delta = ctx->current_tick - last_tick;
 
-        switch (ev.kind)
+        for (int i = 0; i < batch_count; i++)
         {
-        // case MML_EV_EOT: write_end_of_track (ctx->mw, delta); return;
-        case MML_EV_EOT: return last_tick;
-        case MML_EV_CTL: process_control (ctx, ev.as.ctl.cmd, ev.as.ctl.value); break;
-        case MML_EV_NOTE: {
-            if (ev.as.note.length == 0) ev.as.note.length = ctx->default_length;
-            uint32_t duration = calculate_duration (ev.as.note.length, ev.as.note.dots, ctx->ticks_per_quarter);
-            uint8_t note = pitch_to_midi_note (ev.as.note.pitch, ctx->octave, ev.as.note.acc);
-
-            if (note <= 0)
+            uint8_t note = batch[i].midi_note;
+            if (!ctx->active_notes[note])
             {
-                ctx->current_tick += duration;
-                break;
+                midi_event_t mev = { .kind = MIDI_NOTE_ON,
+                                     .channel = ctx->channel,
+                                     .as.note_on = { .note = note, .velocity = ctx->velocity } };
+                write_midi (ctx, (i == 0) ? delta : 0, mev);
+                if (i == 0) delta = 0;
+                ctx->active_notes[note] = true;
             }
+        }
 
-            midi_event_t ev =
+        if (batch_count > 0) { last_tick = ctx->current_tick; }
+
+        ctx->current_tick += step_duration;
+
+        bool first_off = true;
+        uint32_t off_delta = ctx->current_tick - last_tick;
+
+        for (int i = 0; i < batch_count; i++)
+        {
+            uint8_t note = batch[i].midi_note;
+            bool is_tied = batch[i].is_tied;
+
+            if (!is_tied)
             {
-                .kind = MIDI_NOTE_ON,
-                .channel = ctx->channel,
-                .as.note_on =
+                midi_event_t mev
+                    = { .kind = MIDI_NOTE_ON, .channel = ctx->channel, .as.note_on = { .note = note, .velocity = 0 } };
+
+                write_midi (ctx, first_off ? off_delta : 0, mev);
+                if (first_off)
                 {
-                    .note = note,
-                    .velocity = ctx->velocity,
-                },
-            };
-
-            write_midi (ctx, delta, ev);
-            last_tick = ctx->current_tick;
-
-            ctx->current_tick += duration;
-            delta = ctx->current_tick - last_tick;
-
-            ev.as.note_on.velocity = 0;
-
-            write_midi (ctx, delta, ev);
-            last_tick = ctx->current_tick;
+                    off_delta = 0;
+                    last_tick = ctx->current_tick;
+                    first_off = false;
+                }
+                ctx->active_notes[note] = false;
+            }
         }
-        }
-
-        if (ctx->offset == ctx->events->size) break;
     }
 
     return last_tick;

@@ -133,6 +133,13 @@ parse_note (parser_context *ctx)
         advance (ctx);
     }
 
+    bool tie = false;
+    if (peek_kind (ctx) == MML_AMP)
+    {
+        advance (ctx);
+        tie = true;
+    }
+
     mml_event ev =
     {
         .kind = MML_EV_NOTE,
@@ -142,6 +149,8 @@ parse_note (parser_context *ctx)
             .acc = acc,
             .length = length,
             .dots = dots,
+            .chord_link = false,
+            .tie = tie,
         },
     };
 
@@ -271,6 +280,108 @@ parse_loop (parser_context *ctx)
 }
 
 bool
+parse_chord (parser_context *ctx)
+{
+    if (peek_kind (ctx) != MML_LPAREN) return false;
+    advance (ctx);
+
+    mml_sequence *parent_seq = ctx->out_sequence;
+
+    mml_sequence *chordseq = calloc (1, sizeof (mml_sequence));
+    ctx->out_sequence = chordseq;
+
+    for (;;)
+    {
+        token_kind kind = peek_kind (ctx);
+        if (kind == MML_RPAREN || kind == MML_EOF) break;
+
+        token t = advance (ctx);
+
+        if (t.kind != MML_NOTE)
+        {
+            fprintf (stderr, "mml: invalid token kind in chord: `%.*s`\n", (int)t.view.size, t.view.data);
+            abort ();
+        }
+
+        int acc = 0;
+        if (peek_kind (ctx) == MML_PLUS)
+        {
+            advance (ctx);
+            acc += 1;
+        }
+        else if (peek_kind (ctx) == MML_MINUS)
+        {
+            advance (ctx);
+            acc -= 1;
+        }
+
+        mml_event ev = 
+        {
+            .kind = MML_EV_NOTE,
+            .as.note = {
+                .pitch = t.view.data[0],
+                .acc = acc,
+                .dots = 0,
+                .length = 0,
+                .tie = false,
+                .chord_link = true,
+            },
+        };
+
+        da_append (ctx->out_sequence, ev);
+    }
+
+    ctx->out_sequence = parent_seq;
+
+    if (!expect (ctx, MML_RPAREN))
+    {
+        fprintf (stderr, "mml: Expected ')' at the end of a chord\n");
+        abort ();
+    }
+
+    unsigned length = 0;
+    if (peek_kind (ctx) == MML_NUMBER)
+    {
+        token numtok = advance (ctx);
+
+        char buffer[32];
+        memcpy (buffer, numtok.view.data, numtok.view.size);
+        buffer[numtok.view.size] = 0;
+
+        char *endptr = NULL;
+        length = strtoul (buffer, &endptr, 10);
+        assert (*endptr == 0); // tokenizer failed, if false.
+    }
+
+    unsigned dots = 0;
+    for (;;)
+    {
+        if (peek_kind (ctx) != MML_DOT) break;
+        dots++;
+        advance (ctx);
+    }
+
+    bool tie = false;
+    if (peek_kind (ctx) == MML_AMP)
+    {
+        advance (ctx);
+        tie = true;
+    }
+
+    for (size_t i = 0; i < chordseq->size; ++i)
+    {
+        mml_event ev = chordseq->items[i];
+        ev.as.note.length = length;
+        ev.as.note.dots = dots;
+        ev.as.note.tie = tie;
+        ev.as.note.chord_link = i != chordseq->size - 1;
+        da_append (parent_seq, ev);
+    }
+
+    return true;
+}
+
+bool
 parse_action (parser_context *ctx)
 {
     if (peek_kind (ctx) == MML_EOF) return false;
@@ -278,6 +389,7 @@ parse_action (parser_context *ctx)
     if (parse_command (ctx)) return true;
     if (parse_loop (ctx)) return true;
     if (parse_expansion (ctx)) return true;
+    if (parse_chord (ctx)) return true;
     return false;
 }
 
@@ -302,7 +414,7 @@ parse_definition (parser_context *ctx)
 
     mml_sequence *parent_seq = ctx->out_sequence;
 
-    mml_sequence *macro_seq = malloc (sizeof (mml_sequence));
+    mml_sequence *macro_seq = calloc (1, sizeof (mml_sequence));
     ctx->out_sequence = macro_seq;
 
     for (;;)

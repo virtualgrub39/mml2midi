@@ -59,6 +59,9 @@ typedef enum
     MML_COLON,
     MML_LBRACE,
     MML_RBRACE,
+    MML_LPAREN,
+    MML_RPAREN,
+    MML_AMP,
     MML_UNKNOWN,
     MML_EOF,
 } token_kind;
@@ -88,7 +91,9 @@ typedef struct
             unsigned length; // 0 = default
             unsigned dots;   // n. of dots
             int acc;         // +1 = sharp; -1 = flat
-            // bool tie;
+
+            bool tie;
+            bool chord_link;
         } note;
         struct
         {

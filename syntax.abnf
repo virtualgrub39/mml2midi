@@ -2,15 +2,20 @@
 # Copyright (C) 2026 virtualgrub39
 # Just for reference - not using any bloated generators in this project.
 
+<comment>       ::= "%" <any-text-until-newline>
+
 <song>          ::= <track> ( ";" <track> )* ";"?
 <track>         ::= ( <action> | <definition> )*
-<action>        ::= <note> | <command> | <loop> | <expansion>
-<note>          ::= <pitch> <accidental>? <number>? <dots>?
+<action>        ::= <note> | <command> | <loop> | <expansion> | <chord>
+
+<note>          ::= <pitch> <accidental>? <number>? <dots>? "&"?
                   | "r" <number>? <dots>?
+<chord>         ::= "(" (<pitch> <accidental>?)+ ")" <number>? <dots>? "&"?
+
 <pitch>         ::= ['a'...'g']
 <accidental>    ::= "+" | "-"
 <dots>          ::= "."+
 <command>       ::= [o|<|>|l|v|t] <number>?
-<loop>          ::= "[" <action>* ":" <action>* "]" <number>
+<loop>          ::= "[" <action>* (":" <action>*)? "]" <number>
 <definition>    ::= "!" <identifier> "{" <action>* "}"
 <expansion>     ::= "@" <identifier>

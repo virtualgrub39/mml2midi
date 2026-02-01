@@ -22,7 +22,7 @@ main (int argc, char *argv[])
     //     t++;
     // }
 
-    mml_sequence sequence = {};
+    mml_sequence sequence = { 0 };
     mml_parse (tokens, &sequence);
     printf ("sequence.len: %zu\n", sequence.size);
 

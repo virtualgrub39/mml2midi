@@ -32,7 +32,13 @@ static bool
 is_ident_char (char c)
 {
     unsigned char uc = (unsigned char)c;
-    return isalnum (uc) || (uc >= 0x80);
+    return isalnum (uc) || (uc >= 0x80) || uc == '_';
+}
+
+static bool
+is_newline (char c)
+{
+    return c == '\r' || c == '\n';
 }
 
 typedef struct
@@ -47,6 +53,13 @@ skip_whitespace (mmlexer *lexer)
     while (lexer->offset < lexer->size && is_space (lexer->data[lexer->offset])) lexer->offset += 1;
 }
 
+static void
+skip_comment (mmlexer *lexer)
+{
+    if (lexer->data[lexer->offset] != '%') return;
+    while (lexer->offset < lexer->size && !is_newline (lexer->data[lexer->offset])) lexer->offset++;
+}
+
 static token
 read_next_token (mmlexer *lexer)
 {
@@ -55,7 +68,14 @@ read_next_token (mmlexer *lexer)
 
     if (lexer == NULL) return (token){ MML_UNKNOWN, { 0 } };
 
-    skip_whitespace (lexer);
+    for (;;)
+    {
+        skip_whitespace (lexer);
+        if (lexer->offset < lexer->size && lexer->data[lexer->offset] == '%')
+            skip_comment (lexer);
+        else
+            break;
+    }
 
     size_t offset = lexer->offset;
 
@@ -85,6 +105,9 @@ read_next_token (mmlexer *lexer)
     case '{': tok.kind = MML_LBRACE; break;
     case ']': tok.kind = MML_RBRACKET; break;
     case '[': tok.kind = MML_LBRACKET; break;
+    case '(': tok.kind = MML_LPAREN; break;
+    case ')': tok.kind = MML_RPAREN; break;
+    case '&': tok.kind = MML_AMP; break;
     case ':': tok.kind = MML_COLON; break;
 
     case '@': {
@@ -136,8 +159,6 @@ read_next_token (mmlexer *lexer)
         }
     }
     }
-
-    if (tok.kind == MML_UNKNOWN) { __asm ("int3"); }
 
     lexer->offset += tok.view.size;
     return tok;
